@@ -1,76 +1,85 @@
+import sys
+from assistant import parse_intent
 from db_queries import (
-    get_nav_row_for_date,
-    get_price_pnl_contributions,
-    get_cash_change,
-    get_nav_series,
-    get_holding_for_date,
+    get_nav_on_date,
+    explain_nav_change,
+    get_big_nav_moves,
+    get_holding_on_date,
+    get_cash_on_date,
 )
-from rule_engine import detect_big_nav_moves
-from guardrails import extract_date, extract_ticker, get_allowed_tickers
-from llm_explainer import explain_nav_move
 
 
 def main():
-    allowed = get_allowed_tickers()
     print("Portfolio assistant ready.")
     print("Examples:")
     print("NAV on 2025-01-13")
     print("Explain 2025-01-20")
     print("What is my holding in NVDA on 2025-01-13")
+    print("What was cash position on 2025-01-30")
     print("Show big moves")
-    print("Type quit to exit")
+    print("Type quit to exit\n")
 
     while True:
-        q = input("\nQuestion: ").strip()
-        if q.lower() in {"quit", "exit"}:
-            break
+        question = input("Question: ").strip()
 
-        q_lower = q.lower()
-        date = extract_date(q)
-        ticker = extract_ticker(q, allowed)
+        if question.lower() == "quit":
+            sys.exit(0)
 
-        if "holding" in q_lower or "shares" in q_lower or "exposure" in q_lower:
-            if not date or not ticker:
-                print("Please specify both a valid ticker and date.")
-                continue
-            row = get_holding_for_date(ticker, date)
-            if row["quantity"] is None:
-                print(f"No holding found for {ticker} on {date}.")
-                continue
-            print(
-                f"On {date}, you held {row['quantity']:.0f} shares of {ticker} "
-                f"at {row['price']:.2f} with a market value of {row['market_value']:,.2f}."
-            )
-            continue
+        try:
+            intent_data = parse_intent(question)
+            intent = intent_data["intent"]
 
-        if "nav" in q_lower:
-            if not date:
-                print("Please specify a date.")
-                continue
-            row = get_nav_row_for_date(date)
-            print(f"NAV on {date} was {row['nav']:,.2f}.")
-            continue
+            # -----------------------------
+            # NAV
+            # -----------------------------
+            if intent == "NAV_QUERY":
+                date = intent_data.get("date")
+                nav = get_nav_on_date(date)
+                print(f"NAV on {date}: {nav:,.2f}\n")
 
-        if "explain" in q_lower or "why" in q_lower:
-            if not date:
-                print("Please specify a date.")
-                continue
-            nav = get_nav_row_for_date(date)
-            contribs = get_price_pnl_contributions(date)
-            cash = get_cash_change(date)
-            print(explain_nav_move(nav, contribs, cash))
-            continue
+            # -----------------------------
+            # Explain NAV move
+            # -----------------------------
+            elif intent == "EXPLAIN_DAY":
+                date = intent_data.get("date")
+                explanation = explain_nav_change(date)
+                print(explanation + "\n")
 
-        if "big" in q_lower:
-            navs = get_nav_series()
-            alerts = detect_big_nav_moves(navs)
-            for a in alerts:
+            # -----------------------------
+            # Big NAV moves
+            # -----------------------------
+            elif intent == "BIG_NAV_MOVES":
+                moves = get_big_nav_moves()
+                for m in moves:
+                    print(m)
+                print()
+
+            # -----------------------------
+            # Holdings
+            # -----------------------------
+            elif intent == "HOLDING_QUERY":
+                ticker = intent_data.get("ticker")
+                date = intent_data.get("date")
+                holding = get_holding_on_date(ticker, date)
                 print(
-                    f"{a['nav_date']} NAV change {a['daily_change']:,.2f}"
+                    f"Holding in {ticker} on {date}: {holding}\n"
                 )
-            continue
 
-        print("I did not understand. Try again.")
+            # -----------------------------
+            # Cash
+            # -----------------------------
+            elif intent == "CASH_QUERY":
+                date = intent_data.get("date")
+                cash = get_cash_on_date(date)
+                print(
+                    f"Cash position on {date}: {cash:,.2f}\n"
+                )
+
+            else:
+                print("I did not understand. Try again.\n")
+
+        except Exception as e:
+            print(f"Error: {e}\n")
 
 
 if __name__ == "__main__":

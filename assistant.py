@@ -1,34 +1,72 @@
-from db_queries import (
-    get_nav_series,
-    get_nav_row_for_date,
-    get_price_pnl_contributions,
-    get_cash_change,
-)
-from rule_engine import detect_big_nav_moves
-from llm_explainer import explain_nav_move
+import re
+from llm_explainer import extract_intent_with_llm
 
 
-def main():
-    nav_series = get_nav_series()
-    alerts = detect_big_nav_moves(nav_series)
-
-    if not alerts:
-        print("No big NAV moves detected.")
-        return
-
-    alert = sorted(alerts, key=lambda x: abs(x["daily_return"]), reverse=True)[0]
-    date = alert["nav_date"]
-
-    print("=" * 80)
-    print(f"Explaining date: {date}")
-
-    nav_row = get_nav_row_for_date(date)
-    contribs = get_price_pnl_contributions(date)
-    cash = get_cash_change(date)
-
-    text = explain_nav_move(nav_row, contribs, cash)
-    print(text)
+ALLOWED_INTENTS = {
+    "NAV_QUERY",
+    "EXPLAIN_DAY",
+    "BIG_NAV_MOVES",
+    "HOLDING_QUERY",
+    "CASH_QUERY"
+}
 
 
-if __name__ == "__main__":
-    main()
+def parse_intent(question: str):
+    q = question.lower()
+
+    # -----------------------------
+    # Rule based parsing (first)
+    # -----------------------------
+
+    # NAV
+    if "nav" in q:
+        date = extract_date(q)
+        return {"intent": "NAV_QUERY", "date": date}
+
+    # Explain day
+    if q.startswith("explain"):
+        date = extract_date(q)
+        return {"intent": "EXPLAIN_DAY", "date": date}
+
+    # Big moves
+    if "big" in q and "move" in q:
+        return {"intent": "BIG_NAV_MOVES"}
+
+    # Cash queries
+    if "cash" in q:
+        date = extract_date(q)
+        return {"intent": "CASH_QUERY", "date": date}
+
+    # Holdings
+    if "holding" in q or "position" in q or "shares" in q:
+        ticker = extract_ticker(q)
+        date = extract_date(q)
+        return {
+            "intent": "HOLDING_QUERY",
+            "ticker": ticker,
+            "date": date
+        }
+
+    # -----------------------------
+    # Fallback to LLM intent parsing
+    # -----------------------------
+    llm_result = extract_intent_with_llm(question)
+
+    if llm_result["intent"] not in ALLOWED_INTENTS:
+        raise ValueError("Unsupported question")
+
+    return llm_result
+
+
+def extract_date(text):
+    match = re.search(r"\d{4}-\d{2}-\d{2}", text)
+    if match:
+        return match.group(0)
+    return None
+
+
+def extract_ticker(text):
+    match = re.search(r"\b[A-Z]{2,5}\b", text.upper())
+    if match:
+        return match.group(0)
+    return None
