@@ -1,6 +1,8 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import tempfile
+import subprocess
 
 from db_queries import (
     get_nav_on_date,
@@ -15,22 +17,6 @@ from db_queries import (
 )
 
 DB_PATH = "portfolio.db"
-
-
-def get_available_dates():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql(
-        "SELECT DISTINCT holding_date FROM holdings ORDER BY holding_date", conn
-    )
-    conn.close()
-    return df["holding_date"].tolist()
-
-
-def get_tickers():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT ticker FROM securities ORDER BY ticker", conn)
-    conn.close()
-    return df["ticker"].tolist()
 
 
 # -----------------------------
@@ -50,15 +36,60 @@ st.caption(
 st.divider()
 
 # -----------------------------
-# Load core data safely
+# Sidebar: Excel upload
 # -----------------------------
+st.sidebar.header("Data Management")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload portfolio Excel file",
+    type=["xlsx"],
+)
+
+if not uploaded_file:
+    st.sidebar.info("Upload an Excel file to begin.")
+    st.stop()
+
+with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+    tmp.write(uploaded_file.read())
+    temp_excel_path = tmp.name
+
+try:
+    subprocess.run(
+        ["python", "load_excel_to_sqlite.py", temp_excel_path],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    st.sidebar.success("Portfolio data loaded successfully.")
+except subprocess.CalledProcessError as e:
+    st.sidebar.error("Data validation failed.")
+    st.sidebar.text(e.stderr)
+    st.stop()
+
+# -----------------------------
+# Helper functions
+# -----------------------------
+def get_available_dates():
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql(
+        "SELECT DISTINCT holding_date FROM holdings ORDER BY holding_date", conn
+    )
+    conn.close()
+    return df["holding_date"].tolist()
+
+
+def get_tickers():
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql("SELECT ticker FROM securities ORDER BY ticker", conn)
+    conn.close()
+    return df["ticker"].tolist()
+
+
 dates = get_available_dates()
 tickers = get_tickers()
 
 if not dates:
-    st.error(
-        "No portfolio data available. Please ensure the database is loaded successfully."
-    )
+    st.error("No valid portfolio data available.")
     st.stop()
 
 # -----------------------------
@@ -84,10 +115,6 @@ if section == "Portfolio Overview":
 
     date = st.selectbox("Select date", dates, index=len(dates) - 1)
 
-    if date is None:
-        st.warning("Please select a valid date.")
-        st.stop()
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -101,9 +128,7 @@ if section == "Portfolio Overview":
     st.markdown("### Portfolio Breakdown")
 
     breakdown = get_portfolio_breakdown(date)
-    breakdown["Contribution (%)"] = (
-        breakdown["market_value"] / breakdown["market_value"].sum()
-    )
+    breakdown["Contribution (%)"] = breakdown["market_value"] / breakdown["market_value"].sum()
 
     st.dataframe(
         breakdown.style.format(
@@ -130,13 +155,8 @@ elif section == "NAV Analysis":
     with col2:
         end_date = st.selectbox("End date", dates, index=len(dates) - 1)
 
-    if start_date is None or end_date is None:
-        st.warning("Please select both a start and end date.")
-        st.stop()
-
     if st.button("Analyse NAV"):
         nav_start, nav_end, change = get_nav_between_dates(start_date, end_date)
-
         st.metric("NAV Change", f"{change:,.2f}")
 
         nav_ts = get_nav_timeseries(start_date, end_date)
@@ -172,10 +192,6 @@ elif section == "Holdings":
     with col2:
         date = st.selectbox("Select date", dates)
 
-    if ticker is None or date is None:
-        st.warning("Please select both a security and a date.")
-        st.stop()
-
     if st.button("Show Holding"):
         quantity = get_holding_on_date(ticker, date)
         st.metric(f"Holding in {ticker}", f"{quantity:,} shares")
@@ -208,10 +224,6 @@ elif section == "Cash Analysis":
     date = st.selectbox(
         "Select date", cash_ts["date"].dt.strftime("%Y-%m-%d").tolist()
     )
-
-    if date is None:
-        st.warning("Please select a valid date.")
-        st.stop()
 
     explanation = explain_cash_change(date)
     st.text(explanation)

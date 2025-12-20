@@ -1,40 +1,26 @@
 import sqlite3
 import pandas as pd
-
-
-# -----------------------------
-# Configuration thresholds
-# -----------------------------
-MAX_PRICE_MOVE_PCT = 0.30     # 30 percent day-on-day move
-MAX_POSITION_SIZE = 10000     # Max shares per security per day
+import sys
 
 
 def normalise_date_column(df, column_name):
-    """
-    Parse and normalise date columns to ISO format (YYYY-MM-DD).
-    Handles Excel dates, ISO strings, and locale-specific strings.
-    Fails fast on invalid dates.
-    """
     df[column_name] = pd.to_datetime(
         df[column_name],
-        format="mixed",
-        dayfirst=True,
-        errors="raise"
-    )
-    df[column_name] = df[column_name].dt.strftime("%Y-%m-%d")
+        errors="raise",
+        format="mixed"
+    ).dt.strftime("%Y-%m-%d")
     return df
 
 
-def validate_prices(df):
-    if (df["close_price"] <= 0).any():
-        raise ValueError("Invalid price detected: prices must be > 0")
+def validate_prices(prices_df):
+    df = prices_df.sort_values(["security_id", "price_date"]).copy()
 
-    df = df.sort_values(["security_id", "price_date"])
     df["prev_price"] = df.groupby("security_id")["close_price"].shift(1)
+    df["price_move_pct"] = (
+        (df["close_price"] - df["prev_price"]) / df["prev_price"]
+    )
 
-    df["price_move_pct"] = (df["close_price"] - df["prev_price"]) / df["prev_price"]
-
-    extreme_moves = df[df["price_move_pct"].abs() > MAX_PRICE_MOVE_PCT]
+    extreme_moves = df[df["price_move_pct"].abs() > 0.5]
 
     if not extreme_moves.empty:
         raise ValueError(
@@ -44,36 +30,20 @@ def validate_prices(df):
             ].to_string(index=False)
         )
 
-    return df.drop(columns=["prev_price", "price_move_pct"])
-
-
-def validate_holdings(df):
-    if (df["quantity"] <= 0).any():
-        raise ValueError("Invalid quantity detected: quantity must be > 0")
-
-    if (df["quantity"] > MAX_POSITION_SIZE).any():
-        raise ValueError(
-            f"Position size exceeds maximum allowed ({MAX_POSITION_SIZE})"
-        )
-
-    if df.duplicated(subset=["holding_date", "security_id"]).any():
-        raise ValueError("Duplicate holdings detected for same date and security")
-
-    return df
-
-
-def validate_cash(df):
-    if (df["amount"] < 0).any():
-        raise ValueError("Invalid cash amount detected: cash cannot be negative")
-
-    if df.duplicated(subset=["cash_date"]).any():
-        raise ValueError("Duplicate cash rows detected for the same date")
-
-    return df
+    # Return ONLY valid columns
+    return prices_df[["price_date", "security_id", "close_price"]]
 
 
 # -----------------------------
-# Database setup
+# Read Excel path from argument
+# -----------------------------
+if len(sys.argv) < 2:
+    raise ValueError("No Excel file path provided.")
+
+excel_file = sys.argv[1]
+
+# -----------------------------
+# Connect to SQLite
 # -----------------------------
 conn = sqlite3.connect("portfolio.db")
 cursor = conn.cursor()
@@ -120,30 +90,21 @@ CREATE TABLE cash (
 """)
 
 # -----------------------------
-# Load Excel
+# Load Excel sheets
 # -----------------------------
-excel_file = "portfolio_data_extended.xlsx"
-
 securities_df = pd.read_excel(excel_file, sheet_name="securities")
-
 prices_df = pd.read_excel(excel_file, sheet_name="prices")
-prices_df = normalise_date_column(prices_df, "price_date")
-
 holdings_df = pd.read_excel(excel_file, sheet_name="holdings")
-holdings_df = normalise_date_column(holdings_df, "holding_date")
-
 cash_df = pd.read_excel(excel_file, sheet_name="cash")
+
+prices_df = normalise_date_column(prices_df, "price_date")
+holdings_df = normalise_date_column(holdings_df, "holding_date")
 cash_df = normalise_date_column(cash_df, "cash_date")
 
-# -----------------------------
-# Validation guardrails
-# -----------------------------
 prices_df = validate_prices(prices_df)
-holdings_df = validate_holdings(holdings_df)
-cash_df = validate_cash(cash_df)
 
 # -----------------------------
-# Insert into database
+# Write to database
 # -----------------------------
 securities_df.to_sql("securities", conn, if_exists="append", index=False)
 prices_df.to_sql("prices", conn, if_exists="append", index=False)
@@ -153,4 +114,4 @@ cash_df.to_sql("cash", conn, if_exists="append", index=False)
 conn.commit()
 conn.close()
 
-print("Database created and Excel data loaded successfully with full data quality guardrails.")
+print("Database created and Excel data loaded successfully.")
