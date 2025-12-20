@@ -1,141 +1,66 @@
-# 📊 Portfolio SQL and AI Assistant
+# 📊 AVI Portfolio Analytics Dashboard
 
-A portfolio analytics assistant that combines deterministic SQL based calculations with a guarded AI explanation layer.  
-The system answers natural language questions about portfolio holdings, NAV, performance, and drivers while ensuring all numbers come from verified data sources.
+## 🧭 Overview
+The AVI Portfolio Analytics Dashboard is a lightweight internal analytics tool designed to support investment and operations teams with transparent, auditable portfolio insights.
 
----
-
-## 🔍 What problem does this solve
-
-Investment teams spend time manually reconciling portfolio data across spreadsheets and systems to answer questions such as:
-
-• What was the portfolio NAV on a given day  
-• What drove a large move in performance  
-• Which holdings contributed most to PnL  
-• How did cash movements affect returns  
-
-This project demonstrates how those questions can be answered using a transparent SQL engine, with AI used only to explain results rather than calculate them.
+The application focuses on deterministic portfolio analysis, strong data quality controls, and clear visualisation rather than automation or black box decision making. It demonstrates how a Data Analyst can build internal tools that support portfolio monitoring, NAV validation, holdings analysis, and cash oversight in an investment management environment.
 
 ---
 
-## 🧠 Key design principle
-
-**AI never calculates numbers**
-
-All financial calculations are:
-• Deterministic  
-• SQL driven  
-• Reproducible  
-• Verifiable in Excel  
-
-The AI layer only consumes validated outputs and converts them into human readable commentary.
+## 🚀 Key Features
+- 📈 Portfolio NAV calculation by date with full transparency  
+- 🧮 Security level portfolio breakdown including quantities, prices, market values, and NAV contribution  
+- 📊 NAV analysis across selectable date ranges with time series visualisation  
+- 📅 Daily NAV change tables to support validation and investigation  
+- 📦 Holdings analysis by security and date  
+- 💰 Cash balance monitoring with time series view and daily movement analysis  
+- 🛡️ Robust data quality checks to prevent invalid or extreme inputs  
+- 🧾 Deterministic SQL based calculations suitable for audit and review  
 
 ---
 
-## 🏗️ Architecture overview
+## 🗂️ Data Model
+The portfolio is represented using a simple relational structure:
 
-📁 Excel portfolio data  
-⬇  
-🗄️ SQLite database  
-⬇  
-📐 SQL queries for NAV, PnL, returns, attribution  
-⬇  
-🛡️ Rule engine and guardrails  
-⬇  
-🤖 LLM explanation layer  
-⬇  
-💬 Natural language portfolio answers  
+- 🏷️ **Securities** – instrument master data including ticker, name, asset class, and currency  
+- 💵 **Prices** – daily closing prices for each security  
+- 📊 **Holdings** – daily position quantities by security  
+- 💰 **Cash** – daily cash balances  
+
+All analytics are derived directly from these tables to ensure traceability.
 
 ---
 
-## 📂 Project structure
+## 🔐 Data Quality & Guardrails
+Data integrity is enforced at multiple layers:
 
-portfolio_sql_data_project/
+- ✅ Input validation during Excel ingestion  
+  - Prices must be positive  
+  - Quantities must be positive  
+  - Cash balances must be non negative  
+- 🚫 Extreme price movements are detected and blocked at load time  
+- 🧱 SQLite constraints enforce structural correctness  
+- 👀 The dashboard surfaces anomalies visually rather than silently correcting data  
 
-├── portfolio_data_extended.xlsx   # Synthetic portfolio data  
-├── load_excel_to_sqlite.py         # Loads Excel into SQLite  
-├── db_queries.py                   # Core SQL queries  
-├── rule_engine.py                  # Business logic and thresholds  
-├── guardrails.py                   # Query validation and safety  
-├── llm_explainer.py                # AI explanation layer  
-├── qa_assistant.py                 # Interactive portfolio assistant  
-├── run_sql.py                      # Example analytics queries  
-└── .gitignore                      # Excludes database and secrets  
-
----
-
-## 💬 Example questions you can ask
-
-NAV on 2025-01-13  
-Explain 2025-01-20  
-Show big moves  
-What is my holding in AAPL  
+This approach prevents corrupted data from entering the system while still allowing realistic market movements to be analysed transparently.
 
 ---
 
-## ⚙️ How to run locally
+## 🏗️ Application Architecture
+- 📁 Excel used as a controlled input source  
+- 🐍 Python ingestion script validates and loads data into SQLite  
+- 🗃️ SQL queries perform all portfolio calculations  
+- 🖥️ Streamlit provides a clean internal analytics interface  
+- ❌ No business logic embedded in the UI layer  
 
-Clone the repository:
-
-git clone https://github.com/KishN93/portfolio-sql-ai-assistant.git  
-cd portfolio-sql-ai-assistant  
-
-Create environment and install dependencies:
-
-conda create -n portfolio_env python=3.10  
-conda activate portfolio_env  
-pip install -r requirements.txt  
-
-Set OpenAI API key:
-
-setx OPENAI_API_KEY "your_api_key_here"  
-
-Load data into SQLite:
-
-python load_excel_to_sqlite.py  
-
-Start the assistant:
-
-python qa_assistant.py  
+This separation ensures the application remains maintainable, auditable, and suitable for internal use.
 
 ---
 
-## 🔐 Security and data handling
+## ▶️ How to Run the Application
 
-• API keys are stored as environment variables  
-• Database files are excluded from version control  
-• Portfolio data is synthetic and included for reproducibility  
-• AI does not have write access to data or calculations  
-
-This mirrors best practice used in financial institutions.
-
----
-
-## 🚀 Why this project matters
-
-This project demonstrates:
-• SQL proficiency applied to finance  
-• Portfolio analytics and NAV logic  
-• Responsible and explainable AI usage  
-• Strong separation of concerns  
-• Production minded data handling  
-
-It is designed as a realistic foundation for portfolio analytics, operations, or data science roles within asset management or fintech.
-
----
-
-## 📌 Future extensions
-
-• Support for multiple portfolios  
-• Time weighted and money weighted returns  
-• Factor attribution  
-• Interactive dashboard  
-• Automated anomaly detection  
-
----
-
-## 👤 Author
-
-Built by Kishan  
-MSc Data Science and AI  
-Background in Investment Operations
+```bash
+conda activate fraud_detection_env
+cd "E:\Data Science Projects\portfolio_sql_data_project"
+python load_excel_to_sqlite.py
+streamlit run App.py
